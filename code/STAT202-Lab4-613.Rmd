@@ -2,7 +2,9 @@
 title: "STAT202 Assignment 4: \nVariable selection"
 author: "David Ewing"
 date: "Due on 1 pm 21st August"
-output: pdf_document
+output:
+   word_document:
+      reference_docx: "template.docx"
 ---
 
 # Introduction
@@ -20,9 +22,10 @@ options(repos = c(CRAN = "https://cloud.r-project.org"))
 set.seed(82171165)
 
 #  libraries
-suppressPackageStartupMessages({
+
   library(conflicted)
   library(tidyverse)
+suppressPackageStartupMessages({
   library(performance)
   library(GGally)
   library(flextable)
@@ -35,7 +38,7 @@ suppressPackageStartupMessages({
   library(caTools)
   library(Metrics)
   library(car)
-  
+  library(scales)
 library(patchwork)
 })
 
@@ -332,20 +335,20 @@ Insights:
 
 \newpage
 
-# Step 6: Centring weight and creating weight_c2
+# Step 6: Centring weight and creating weightC2
 
 ```{r Step6}
 
 # Centre the weight variable
 my_kungsan <- my_kungsan %>%
-  mutate(weight_c = weight - mean(weight)) %>%  # Centre weight
-  mutate(weight_c2 = weight_c^2)                # centred weight squared
+  mutate(weightC = weight - mean(weight)) %>%  # Centre weight
+  mutate(weightC2 = weightC^2)                # centred weight squared
 
 
 # Scatterplot 
 kung_splot2 <- ggpairs(
   my_kungsan,
-  columns = c("weight_c", "weight_c2", "sex", "height"),
+  columns = c("weightC", "weightC2", "sex", "height"),
   lower = list(continuous = add_rlci),             #lwoer triangle
   diag = list(continuous = wrap("barDiag", bins = 20)),  
 # upper = list(continuous = add_contour),
@@ -367,8 +370,8 @@ plot_weight_height_3 <- kung_splot1[4, 1]  # Step 3: weight vs height
 plot_weight2_height_3 <- kung_splot1[4, 2] # Step 3: weight2 vs height
 # plot_sex_height_3 <- kung_splot1[4, 3]     # Step 3: sex vs height
 
-plot_weight_height_6 <- kung_splot2[4, 1]  # Step 6: weight_c vs height
-plot_weight2_height_6 <- kung_splot2[4, 2] # Step 6: weight_c2 vs height
+plot_weight_height_6 <- kung_splot2[4, 1]  # Step 6: weightC vs height
+plot_weight2_height_6 <- kung_splot2[4, 2] # Step 6: weightC2 vs height
 # plot_sex_height_6 <- kung_splot2[4, 3]     # Step 6: sex vs height
 
 
@@ -388,24 +391,21 @@ comparison_plot
 
 ---
 
-Centring variables (weight_c and weight_c2) improve symmetry, reduce extreme ranges, enhance visuals, and address multicollinearity. The opposite slopes for height vs weight2 and height vs weight_c2 are because centring changes the reference point of the quadratic term to the mean. This reduces the dependency between the linear (weight_c) and quadratic (weight_c2) terms, providing better scaling and stability in the regression models. Centring appears to be necessary when exploring the introduction of a quadratic term.
+Centring variables (weightC and weightC2) improve symmetry, reduce extreme ranges, enhance visuals, and address multicollinearity. The opposite slopes for height vs weight2 and height vs weightC2 are because centring changes the reference point of the quadratic term to the mean. This reduces the dependency between the linear (weightC) and quadratic (weightC2) terms, providing better scaling and stability in the regression models. Centring appears to be necessary when exploring the introduction of a quadratic term.
 
 ---
 
 \newpage
 
-# Step7: Fit m4 with weight_c, weight_c2, and sex as predictors
+# Step7: Fit m4 with weightC, weightC2, and sex as predictors
 
-```{r step7_final_table_fixed, echo=TRUE, message=FALSE, warning=FALSE}
+```{r step7_final_table_correct_sex, echo=TRUE, message=FALSE, warning=FALSE}
 # m4 model
-m4 <- lm(height ~ weight_c + weight_c2 + sex, data = my_kungsan)
+m4 <- lm(height ~ weightC + weightC2 + sex, data = my_kungsan)
 vif_m4 <- check_collinearity(m4)  # VIF for the centred model
 
 # Merge collinearity results for m5 and m4
 vif_comparison <- merge(vif_m5, vif_m4, by = "Term", all = TRUE, suffixes = c("_m5", "_m4"))
-
-# Print column names to confirm the structure
-print(colnames(vif_comparison))
 
 # Combine data for common metrics across groups
 vif_combined <- vif_comparison %>%
@@ -438,6 +438,27 @@ vif_combined_transposed <- as.data.frame(t(vif_combined))
 vif_combined_transposed <- tibble::rownames_to_column(vif_combined_transposed, var = "Metric")  # Move row names to a column
 colnames(vif_combined_transposed)[-1] <- vif_combined$Metric  # Use terms as column names
 
+# Remove the duplicate "Metric" row if present
+vif_combined_transposed <- vif_combined_transposed[-1, ]
+
+# Reorder columns
+column_order <- c("Metric", "sex", "weight", "weight2", "weightC", "weightC2")
+vif_combined_transposed <- vif_combined_transposed[, column_order]
+
+
+vif_combined_transposed <- vif_combined_transposed %>%
+  mutate(
+    Guideline = c(
+      "Lower is better, indicates\nmulticollinearity\n(Variance Inflation Factor)",
+      "Lower is better, lower boundary\nof confidence interval for VIF",
+      "Lower is better, upper boundary\nof confidence interval for VIF",
+      "Lower is better, indicates the\nstandard error inflation",
+      "Higher is better, indicates\ntolerance of multicollinearity",
+      "Higher is better, lower boundary\nof confidence interval\nfor Tolerance",
+      "Higher is better, upper boundary\nof confidence interval\nfor Tolerance"
+    )
+  )
+
 # Create a flextable for the final table
 vif_combined_flex <- flextable(vif_combined_transposed) %>%
   colformat_double(digits = 3) %>%  # Format numeric values to 3 decimal places
@@ -445,11 +466,12 @@ vif_combined_flex <- flextable(vif_combined_transposed) %>%
   bg(i = NULL, j = 1, bg = "#D3D3D3", part = "body") %>%  # Grey background for the first column
   theme_box() %>%
   align(j = 1, align = "left", part = "all") %>%  # Left-align the first column
-  align(j = 2:ncol(vif_combined_transposed), align = "center", part = "all") %>%  # Center-align other columns
-  autofit()  # Adjust column widths automatically
-
-# Display the final flextable
-vif_combined_flex
+  align(j = 2:(ncol(vif_combined_transposed) - 1), align = "center", part = "all") %>%  # Center-align other columns
+  align(j = ncol(vif_combined_transposed), align = "left", part = "all") %>%  # Left-align the last column
+  fontsize(size = 9, part = "all") %>% 
+  width(j = 1, width = 1.5) %>%  # Adjust width for the "Metric" column
+  width(j = ncol(vif_combined_transposed), width = 1) %>%  # Adjust width for the "Guideline" column
+  autofit()  # Adjust column widths automatically for remaining columns
 
 
 
@@ -460,6 +482,76 @@ vif_combined_flex
 ```{r step72, echo=TRUE, message=FALSE, warning=FALSE}
 # Display the transposed flextable
 vif_combined_flex
+
+```
+
+\newpage
+
+# Step 8: Predict Height with Intervals
+
+```{r Step8}
+
+
+# Step 7: Update `sex` to be a factor with levels 0 (Male) and 1 (Female)
+my_kungsan <- my_kungsan %>%
+  mutate(sex = ifelse(sex == "male", 0, 1)) %>%          # Recode as 0 = Male, 1 = Female
+  mutate(sex = factor(sex, levels = c(0, 1)))            # Ensure factor levels are correctly set
+
+# Step 7: Re-fit m4 with updated `sex`
+m4 <- lm(height ~ weightC + weightC2 + sex, data = my_kungsan)
+
+# Step 8: Predict Height with Intervals
+
+# Calculate centred weight (50 kg - 36 kg = 14)
+weightC <- 50 - 36  # Consistent variable name for centred weight
+
+# Define input data for predictions
+# Use the updated factor levels for `sex`
+new_data <- data.frame(
+  weightC  = c(weightC, weightC),                # Centred weight
+  weightC2 = c(weightC^2, weightC^2),           # Centred weight squared
+  sex = factor(c(0, 1), levels = c(0, 1))       # 0 = Male, 1 = Female
+)
+
+# Generate predictions with prediction intervals
+predictions <- predict(
+  m4,                              # Model m4
+  newdata = new_data,              # Input data
+  interval = "prediction",         # Get prediction intervals
+  level = 0.95                     # 95% confidence level
+)
+
+# Generate predictions with confidence intervals
+confidence_intervals <- predict(
+  m4,                              # Model m4
+  newdata = new_data,              # Input data
+  interval = "confidence",         # Get confidence intervals
+  level = 0.95                     # 95% confidence level
+)
+
+results <- data.frame(
+  Individual = c("50 kg Male", "50 kg Female"),  # Character column
+  fit = confidence_intervals[, "fit"],          # Numeric column
+  lwr = confidence_intervals[, "lwr"],          # Numeric column
+  upr = confidence_intervals[, "upr"],          # Numeric column
+  PI_Lower = predictions[, "lwr"],              # Numeric column
+  PI_Upper = predictions[, "upr"]               # Numeric column
+)
+
+# Verify data types
+str(results)
+
+
+# Create a flextable using the formatted data
+results_flextable <- flextable(results) %>%
+   colformat_double(digits = 3) %>%
+  bg(part = "header", bg = "#D3D3D3") %>%         # Add grey background for the header
+  theme_box() %>%
+  autofit()                                      # Adjust column widths
+
+# Display the flextable
+results_flextable
+
 
 ```
 
